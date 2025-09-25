@@ -1,21 +1,7 @@
 #include <iostream>
 #include <Windows.h>
 
-class NTHeader{
-    public:
-        DWORD signature;
-        FileHeader file_header;
-        OptionalHeader optional_header;
 
-        NTHeader(HANDLE nt_base){
-            /*
-            nt_base: NT Header base address(dos_header->e_lfanew)
-            */
-            this->signature = *(DWORD*)nt_base;
-            this->file_header = FileHeader(nt_base);
-            this->optional_header = OptionalHeader(nt_base);
-        }
-};
 
 class FileHeader{
     public:
@@ -23,11 +9,14 @@ class FileHeader{
         WORD number_of_sections;
         WORD size_of_optional_header;
 
-        FileHeader(HANDLE nt_base){
+        FileHeader(){};
+        FileHeader(HANDLE fl_base){
+            /* fl_base 为文件头基址 */
+
             // HANDLE 类型指针无法进行指针运算（因为它是void），故此需转换类型
-            this->machine = *(WORD*)((BYTE*)nt_base + 0x4);
-            this->number_of_sections = *(WORD*)((BYTE*)nt_base + 0x6);
-            this->size_of_optional_header = *(WORD*)((BYTE*)nt_base + 0x10);
+            this->machine = *(WORD*)((BYTE*)fl_base + 0x0);
+            this->number_of_sections = *(WORD*)((BYTE*)fl_base + 0x2);
+            this->size_of_optional_header = *(WORD*)((BYTE*)fl_base + 0x10);
         }
 };
 
@@ -44,7 +33,8 @@ class OptionalHeader{
         DWORD size_of_headers;               // 0x3C: 所有头大小（文件中）
         DWORD number_of_data_directory;      // 0x6C: 数据目录项数（16）
 
-        OptionalHeader(HANDLE nt_base){
+        OptionalHeader(){};
+        OptionalHeader(HANDLE op_base){
         }
 };
 
@@ -82,6 +72,27 @@ class ImportTable{
         
 };
 
+class NTHeader{
+    public:
+        DWORD signature;
+        FileHeader file_header;
+        OptionalHeader optional_header;
+
+        NTHeader(){};
+        NTHeader(HANDLE nt_base){
+            /*
+            nt_base: NT Header base address(dos_header->e_lfanew)
+            */
+            this->signature = *(DWORD*)nt_base;
+            
+            HANDLE fl_base = (BYTE*)nt_base + 0x4;
+            this->file_header = FileHeader(fl_base);
+
+            HANDLE op_base = (BYTE*)nt_base + 0x18;
+            this->optional_header = OptionalHeader(op_base);
+        }
+};
+
 
 class PEAnalyzer{
     private:
@@ -91,6 +102,8 @@ class PEAnalyzer{
     public:
         // dos头 成员变量
         IMAGE_DOS_HEADER *dos_header;
+        NTHeader nt_header;
+
         PEAnalyzer(std::string file_path){
             this->pe_file_handle = CreateFile(file_path.c_str(), GENERIC_READ,FILE_SHARE_READ,NULL,
                                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -105,11 +118,23 @@ class PEAnalyzer{
                 throw "Not PE File";
             }
             get_dos_header();
+            get_nt_header();
+            get_section_table();
         }
 
         void get_dos_header(){
             this->dos_header = (IMAGE_DOS_HEADER*)this->pe_memory; 
             std::cout<<std::hex<<this->dos_header->e_lfanew<<std::endl;
+        }
+
+        void get_nt_header(){
+            HANDLE nt_base = (BYTE*)this->pe_memory + this->dos_header->e_lfanew;
+            this->nt_header = NTHeader(nt_base);
+            std::cout<<std::hex<<this->nt_header.signature<<std::endl;
+        }
+
+        void get_section_table(){
+            
         }
 };
 
@@ -119,6 +144,6 @@ class PEAnalyzer{
 int main(int argc, char const *argv[])
 {
     PEAnalyzer pe_analyzer("C:/Windows/System32/notepad.exe");
-    pe_analyzer.dos_header->e_lfanew
+    std::cout<<"DEMO:"<<std::hex<<pe_analyzer.nt_header.file_header.size_of_optional_header<<std::endl;
     return 0;
 }
